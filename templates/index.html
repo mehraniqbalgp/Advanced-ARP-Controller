@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced ARP Controller | Netcut Web</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0a0b1e;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --accent-color: #00d2ff;
+            --danger-color: #ff4b2b;
+            --success-color: #00f260;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0c0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            padding: 2rem;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+            backdrop-filter: blur(10px);
+            padding: 1.5rem 2rem;
+            border-radius: 20px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #00d2ff, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .btn {
+            background: linear-gradient(to right, #00d2ff, #3a7bd5);
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 210, 255, 0.5);
+        }
+
+        .btn:disabled {
+            background: #444;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .device-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            display: grid;
+            grid-template-columns: 2fr 2fr 1.5fr 1fr;
+            align-items: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .device-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: scale(1.01);
+        }
+
+        .device-card.attacking {
+            border-left: 5px solid var(--danger-color);
+            background: rgba(255, 75, 43, 0.05);
+        }
+
+        .info-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.3rem;
+        }
+
+        .info-value {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .hostname {
+            color: var(--accent-color);
+        }
+
+        .vendor-tag {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.3rem 0.8rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            display: inline-block;
+        }
+
+        /* Toggle Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #444;
+            transition: .4s;
+            border-radius: 30px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--danger-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(30px);
+        }
+
+        .status-badge {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            margin-left: 0.5rem;
+            display: none;
+        }
+
+        .attacking .status-badge {
+            display: inline;
+            background: var(--danger-color);
+            color: white;
+        }
+
+        /* Loading Animation */
+        .loader {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #FFF;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: none;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 4rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">Advanced ARP Controller</div>
+            <div style="display: flex; align-items: center;">
+                <span id="scan-status" style="margin-right: 15px; font-size: 0.9rem; color: var(--text-secondary);"></span>
+                <div id="loader" class="loader"></div>
+                <button class="btn" id="scan-btn" onclick="scanNetwork()">Scan Subnet</button>
+            </div>
+        </header>
+
+        <div id="device-list">
+            <!-- Devices will be injected here -->
+            <div style="text-align: center; padding: 4rem; opacity: 0.5;">
+                <p>Click "Scan Subnet" to discover devices on your network.</p>
+            </div>
+        </div>
+
+        <footer>
+            Built for security research & educational purposes.
+        </footer>
+    </div>
+
+    <script>
+        let devices = [];
+
+        async function scanNetwork() {
+            const btn = document.getElementById('scan-btn');
+            const loader = document.getElementById('loader');
+            const status = document.getElementById('scan-status');
+
+            btn.disabled = true;
+            loader.style.display = 'inline-block';
+            status.innerText = "Scanning 192.168.x.x...";
+
+            try {
+                const response = await fetch('/api/scan');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    devices = data.devices;
+                    renderDevices();
+                    status.innerText = `Found ${devices.length} devices`;
+                } else {
+                    alert('Error scanning network: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Connection to backend failed.');
+            } finally {
+                btn.disabled = false;
+                loader.style.display = 'none';
+            }
+        }
+
+        async function toggleAttack(ip, mac, state) {
+            try {
+                const response = await fetch('/api/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip, mac, state })
+                });
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    alert('Failed to update target: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function renderDevices() {
+            const list = document.getElementById('device-list');
+            list.innerHTML = '';
+
+            devices.forEach(device => {
+                const card = document.createElement('div');
+                card.className = `device-card ${device.attacking ? 'attacking' : ''}`;
+                card.id = `card-${device.ip.replace(/\./g, '-')}`;
+
+                card.innerHTML = `
+                    <div>
+                        <div class="info-label">Identity</div>
+                        <div class="info-value hostname">${device.name} <span class="status-badge">CUTTING</span></div>
+                    </div>
+                    <div>
+                        <div class="info-label">Address</div>
+                        <div class="info-value">${device.ip} <br> <span style="font-size:0.8rem; color:var(--text-secondary)">${device.mac}</span></div>
+                    </div>
+                    <div>
+                        <div class="info-label">Brand</div>
+                        <div class="vendor-tag">${device.vendor}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="info-label" style="margin-right: 12px;">Active Cut</div>
+                        <label class="switch">
+                            <input type="checkbox" ${device.attacking ? 'checked' : ''} onchange="handleToggle('${device.ip}', '${device.mac}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function handleToggle(ip, mac, checked) {
+            const card = document.getElementById(`card-${ip.replace(/\./g, '-')}`);
+            if (checked) {
+                card.classList.add('attacking');
+            } else {
+                card.classList.remove('attacking');
+            }
+            toggleAttack(ip, mac, checked);
+        }
+
+        // Initialize status polling (optional but good for real-time)
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                if (data.status === 'success') {
+                    // Update UI if needed (already handled by local toggle for speed)
+                }
+            } catch (e) {}
+        }, 5000);
+    </script>
+</body>
+</html>
