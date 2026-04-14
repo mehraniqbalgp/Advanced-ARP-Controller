@@ -3,348 +3,384 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced ARP Controller | Netcut Web</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <title>Advanced ARP Controller v3.0</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --bg-color: #0a0b1e;
-            --glass-bg: rgba(255, 255, 255, 0.05);
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --accent-color: #00d2ff;
-            --danger-color: #ff4b2b;
-            --success-color: #00f260;
-            --text-primary: #ffffff;
-            --text-secondary: #a0a0c0;
+            --primary: #00f2fe;
+            --secondary: #4facfe;
+            --danger: #ff4b2b;
+            --bg: #0f172a;
+            --card: rgba(30, 41, 59, 0.7);
+            --text: #f8fafc;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Inter', sans-serif;
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg); color: var(--text); overflow-x: hidden; }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 2rem; position: relative; }
+        
+        header { 
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;
+            background: var(--card); padding: 1.5rem; border-radius: 20px; backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
 
-        body {
-            background: var(--bg-color);
-            background-image: 
-                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
-                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
-            min-height: 100vh;
-            color: var(--text-primary);
-            padding: 2rem;
-            overflow-x: hidden;
-        }
+        .logo h1 { font-size: 1.8rem; background: linear-gradient(45deg, var(--primary), var(--secondary)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+        .stats { font-size: 0.9rem; opacity: 0.8; }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+        .controls { display: flex; gap: 1rem; margin-bottom: 2rem; background: var(--card); padding: 1.2rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); align-items: center; flex-wrap: wrap; }
+        .search-box { flex: 1; min-width: 250px; position: relative; }
+        .search-box i { position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); opacity: 0.5; }
+        .search-input { width: 100%; padding: 0.8rem 1rem 0.8rem 2.8rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: white; outline: none; transition: 0.3s; }
+        .search-input:focus { border-color: var(--primary); box-shadow: 0 0 15px rgba(0,242,254,0.1); }
+        
+        select.sort-select { background: rgba(255,255,255,0.05); color: white; padding: 0.8rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); outline: none; cursor: pointer; }
 
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 3rem;
-            backdrop-filter: blur(10px);
-            padding: 1.5rem 2rem;
-            border-radius: 20px;
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        button { 
+            padding: 0.8rem 1.5rem; border-radius: 12px; border: none; cursor: pointer; font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; align-items: center; gap: 0.5rem;
         }
+        .btn-scan { background: linear-gradient(45deg, var(--primary), var(--secondary)); color: white; }
+        .btn-all { background: rgba(255,75,43,0.1); color: #ff4b2b; border: 1px solid rgba(255,75,43,0.2); }
+        .btn-all.active { background: var(--danger); color: white; box-shadow: 0 0 20px var(--danger); }
+        
+        .status-badge { font-size: 0.65rem; padding: 0.2rem 0.6rem; border-radius: 20px; font-weight: 800; text-transform: uppercase; margin-left: auto; }
+        .badge-online { background: rgba(0,242,96,0.1); color: #00f260; border: 1px solid rgba(0,242,96,0.2); }
+        .badge-mitm { background: rgba(255,75,43,0.1); color: #ff4b2b; border: 1px solid rgba(255,75,43,0.2); animation: pulse-red 1.5s infinite; }
+        .badge-online { background: rgba(0,242,96,0.1); color: #00f260; border: 1px solid rgba(0,242,96,0.2); }
+        .badge-mitm { background: rgba(255,75,43,0.1); color: #ff4b2b; border: 1px solid rgba(255,75,43,0.2); animation: pulse-red 1.5s infinite; }
 
-        .logo {
-            font-size: 1.5rem;
-            font-weight: 800;
-            background: linear-gradient(to right, #00d2ff, #3a7bd5);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(255,75,43,0.4); } 70% { box-shadow: 0 0 0 10px rgba(255,75,43,0); } 100% { box-shadow: 0 0 0 0 rgba(255,75,43,0); } }
 
-        .btn {
-            background: linear-gradient(to right, #00d2ff, #3a7bd5);
-            border: none;
-            padding: 0.8rem 1.5rem;
-            border-radius: 12px;
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
+        .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }
+        
+        .device-card { 
+            background: var(--card); border-radius: 20px; padding: 1.5rem; backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.05); position: relative; transition: all 0.3s;
         }
+        .device-card:hover { transform: translateY(-5px); border-color: var(--primary); }
+        .device-card.attacking { border-color: var(--danger); box-shadow: 0 0 20px rgba(255,75,43,0.2); }
 
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 210, 255, 0.5);
-        }
+        .device-header { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; padding-right: 4.5rem; }
+        .device-icon { width: 45px; height: 45px; background: rgba(255,255,255,0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+        .device-title { flex: 1; min-width: 0; }
+        .device-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 0.5rem; }
+        .device-name i { font-size: 0.8rem; cursor: pointer; opacity: 0.5; }
+        .device-vendor { font-size: 0.75rem; opacity: 0.6; }
 
-        .btn:disabled {
-            background: #444;
-            cursor: not-allowed;
-            box-shadow: none;
-        }
+        .device-body { font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 1rem; }
+        .label { opacity: 0.5; margin-right: 0.5rem; font-size: 0.7rem; text-transform: uppercase; }
 
-        .device-card {
-            background: var(--glass-bg);
-            backdrop-filter: blur(16px);
-            border: 1px solid var(--glass-border);
-            border-radius: 24px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-            display: grid;
-            grid-template-columns: 2fr 2fr 1.5fr 1fr;
-            align-items: center;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
+        .bandwidth-section { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05); }
+        .bandwidth-val { font-size: 1rem; font-weight: 800; color: var(--primary); }
+        .sparkline-container { height: 40px; width: 100%; margin-top: 0.5rem; }
 
-        .device-card:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(255, 255, 255, 0.2);
-            transform: scale(1.01);
-        }
+        .toggle-switch { position: absolute; top: 1.5rem; right: 1.5rem; z-index: 10; }
+        
+        .status-badge { font-size: 0.65rem; padding: 0.2rem 0.6rem; border-radius: 20px; font-weight: 800; text-transform: uppercase; margin-top: 0.5rem; display: inline-block; }
+        .switch { position: relative; display: inline-block; width: 45px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #334155; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--danger); }
+        input:checked + .slider:before { transform: translateX(21px); }
 
-        .device-card.attacking {
-            border-left: 5px solid var(--danger-color);
-            background: rgba(255, 75, 43, 0.05);
-        }
-
-        .info-label {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 0.3rem;
-        }
-
-        .info-value {
-            font-size: 1rem;
-            font-weight: 600;
-        }
-
-        .hostname {
-            color: var(--accent-color);
-        }
-
-        .vendor-tag {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 0.3rem 0.8rem;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            display: inline-block;
-        }
-
-        /* Toggle Switch */
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 60px;
-            height: 30px;
-        }
-
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #444;
-            transition: .4s;
-            border-radius: 30px;
-        }
-
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 22px;
-            width: 22px;
-            left: 4px;
-            bottom: 4px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-        }
-
-        input:checked + .slider {
-            background-color: var(--danger-color);
-        }
-
-        input:checked + .slider:before {
-            transform: translateX(30px);
-        }
-
-        .status-badge {
-            font-size: 0.7rem;
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            margin-left: 0.5rem;
-            display: none;
-        }
-
-        .attacking .status-badge {
-            display: inline;
-            background: var(--danger-color);
-            color: white;
-        }
-
-        /* Loading Animation */
-        .loader {
-            width: 20px;
-            height: 20px;
-            border: 3px solid #FFF;
-            border-bottom-color: transparent;
-            border-radius: 50%;
-            display: none;
-            box-sizing: border-box;
-            animation: rotation 1s linear infinite;
-            margin-right: 10px;
-        }
-
-        @keyframes rotation {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        footer {
-            text-align: center;
-            margin-top: 4rem;
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-        }
+        /* Modal Settings */
+        #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
+        .modal-content { background: var(--bg); padding: 2rem; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1); width: 100%; max-width: 400px; box-shadow: 0 0 50px rgba(0,242,254,0.1); }
+        .modal-input { width: 100%; padding: 0.8rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: white; margin: 1.5rem 0; font-size: 1rem; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 1rem; }
+        .icon-picker { display: flex; gap: 1rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap; }
+        .icon-option { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: rgba(255,255,255,0.05); cursor: pointer; transition: 0.3s; border: 1px solid transparent; }
+        .icon-option:hover { background: rgba(255,255,255,0.1); }
+        .icon-option.selected { border-color: var(--primary); background: rgba(0,242,254,0.1); color: var(--primary); }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <div class="logo">Advanced ARP Controller</div>
-            <div style="display: flex; align-items: center;">
-                <span id="scan-status" style="margin-right: 15px; font-size: 0.9rem; color: var(--text-secondary);"></span>
-                <div id="loader" class="loader"></div>
-                <button class="btn" id="scan-btn" onclick="scanNetwork()">Scan Subnet</button>
+            <div class="logo">
+                <h1>Advanced Controller <span style="font-size: 0.8rem; opacity: 0.5;">v3.0</span></h1>
+                <p id="net-label" class="stats">Initializing discovery...</p>
+            </div>
+            <div class="stats" id="global-stats">
+                <i class="fas fa-network-wired"></i> <span id="device-count">0</span> Devices detected
             </div>
         </header>
 
-        <div id="device-list">
-            <!-- Devices will be injected here -->
-            <div style="text-align: center; padding: 4rem; opacity: 0.5;">
-                <p>Click "Scan Subnet" to discover devices on your network.</p>
+        <div class="controls">
+            <div class="search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" id="search-input" class="search-input" placeholder="Search by name, IP or MAC..." oninput="handleSearch()">
             </div>
+            
+            <select id="sort-select" class="sort-select" onchange="handleSort()">
+                <option value="ip">Sort by IP</option>
+                <option value="name">Sort by Name</option>
+                <option value="speed">Sort by Speed</option>
+                <option value="status">Sort by Status</option>
+            </select>
+
+            <button onclick="scan()" class="btn-scan" id="btn-scan">
+                <i class="fas fa-sync-alt"></i> Scan
+            </button>
+            <button onclick="toggleAll()" class="btn-all" id="btn-all">
+                <i class="fas fa-radiation"></i> Kill All
+            </button>
         </div>
 
-        <footer>
-            Built for security research & educational purposes.
-        </footer>
+        <div class="device-grid" id="device-grid">
+            <!-- Dynamic Devices -->
+        </div>
+
+        <p style="text-align: center; margin-top: 3rem; font-size: 0.8rem; opacity: 0.4;">
+            Premium UI Dashboard Built for Security Research & Education
+        </p>
+    </div>
+
+    <div id="modal">
+        <div class="modal-content">
+            <h3>Customize Device</h3>
+            <input type="text" id="nickname-input" class="modal-input" placeholder="Enter name...">
+            <div class="icon-picker" id="icon-picker">
+                <div class="icon-option" onclick="selectIcon('laptop')" data-icon="laptop"><i class="fas fa-laptop"></i></div>
+                <div class="icon-option" onclick="selectIcon('mobile-alt')" data-icon="mobile-alt"><i class="fas fa-mobile-alt"></i></div>
+                <div class="icon-option" onclick="selectIcon('tv')" data-icon="tv"><i class="fas fa-tv"></i></div>
+                <div class="icon-option" onclick="selectIcon('gamepad')" data-icon="gamepad"><i class="fas fa-gamepad"></i></div>
+                <div class="icon-option" onclick="selectIcon('desktop')" data-icon="desktop"><i class="fas fa-desktop"></i></div>
+                <div class="icon-option" onclick="selectIcon('print')" data-icon="print"><i class="fas fa-print"></i></div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal()" style="background:transparent; color:white;">Cancel</button>
+                <button onclick="saveNickname()" class="btn-scan">Save Changes</button>
+            </div>
+        </div>
     </div>
 
     <script>
         let devices = [];
+        let filteredDevices = [];
+        let charts = {};
+        let selectedMac = null;
+        let selectedIcon = 'laptop';
+        let globalState = false;
 
-        async function scanNetwork() {
-            const btn = document.getElementById('scan-btn');
-            const loader = document.getElementById('loader');
-            const status = document.getElementById('scan-status');
-
-            btn.disabled = true;
-            loader.style.display = 'inline-block';
-            status.innerText = "Scanning 192.168.x.x...";
-
+        async function scan() {
+            const btn = document.getElementById('btn-scan');
+            btn.classList.add('scanning');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
+            
             try {
-                const response = await fetch('/api/scan');
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    devices = data.devices;
-                    renderDevices();
-                    status.innerText = `Found ${devices.length} devices`;
-                } else {
-                    alert('Error scanning network: ' + data.message);
+                const res = await fetch('/api/scan');
+                const data = await res.json();
+                devices = data.devices || [];
+                handleSearch(); // Triggers render with current filter/sort
+                document.getElementById('device-count').innerText = devices.length;
+                if (devices.length > 0) {
+                    const gateway = devices[0].ip.split('.').slice(0,3).join('.') + '.1';
+                    document.getElementById('net-label').innerText = "Gateway detected: " + gateway;
                 }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Connection to backend failed.');
+            } catch (e) {
+                console.error(e);
             } finally {
-                btn.disabled = false;
-                loader.style.display = 'none';
+                btn.classList.remove('scanning');
+                btn.innerHTML = '<i class="fas fa-sync-alt"></i> Scan';
             }
         }
 
-        async function toggleAttack(ip, mac, state) {
-            try {
-                const response = await fetch('/api/toggle', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ip, mac, state })
-                });
-                const data = await response.json();
-                if (data.status !== 'success') {
-                    alert('Failed to update target: ' + data.message);
+        function handleSearch() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            filteredDevices = devices.filter(d => 
+                d.name.toLowerCase().includes(query) || 
+                d.ip.includes(query) || 
+                d.mac.toLowerCase().includes(query)
+            );
+            handleSort(); 
+        }
+
+        function handleSort() {
+            const criteria = document.getElementById('sort-select').value;
+            filteredDevices.sort((a, b) => {
+                if (criteria === 'ip') {
+                    const numA = a.ip.split('.').map(n => n.padStart(3,'0')).join('.');
+                    const numB = b.ip.split('.').map(n => n.padStart(3,'0')).join('.');
+                    return numA.localeCompare(numB);
                 }
-            } catch (error) {
-                console.error('Error:', error);
-            }
+                if (criteria === 'name') return a.name.localeCompare(b.name);
+                if (criteria === 'speed') return (b.bandwidth || 0) - (a.bandwidth || 0);
+                if (criteria === 'status') return (b.attacking ? 1 : 0) - (a.attacking ? 1 : 0);
+                return 0;
+            });
+            renderDevices();
         }
 
         function renderDevices() {
-            const list = document.getElementById('device-list');
-            list.innerHTML = '';
+            const grid = document.getElementById('device-grid');
+            grid.innerHTML = filteredDevices.map(dev => {
+                let statusBadge = '<span class="status-badge badge-online">Online</span>';
+                if (dev.attacking) statusBadge = '<span class="status-badge badge-mitm">MITM Active</span>';
 
-            devices.forEach(device => {
-                const card = document.createElement('div');
-                card.className = `device-card ${device.attacking ? 'attacking' : ''}`;
-                card.id = `card-${device.ip.replace(/\./g, '-')}`;
-
-                card.innerHTML = `
-                    <div>
-                        <div class="info-label">Identity</div>
-                        <div class="info-value hostname">${device.name} <span class="status-badge">CUTTING</span></div>
-                    </div>
-                    <div>
-                        <div class="info-label">Address</div>
-                        <div class="info-value">${device.ip} <br> <span style="font-size:0.8rem; color:var(--text-secondary)">${device.mac}</span></div>
-                    </div>
-                    <div>
-                        <div class="info-label">Brand</div>
-                        <div class="vendor-tag">${device.vendor}</div>
-                    </div>
-                    <div style="text-align: right;">
-                        <div class="info-label" style="margin-right: 12px;">Active Cut</div>
+                return `
+                <div class="device-card ${dev.attacking ? 'attacking' : ''}" id="card-${dev.mac.replace(/:/g,'-')}">
+                    <div class="toggle-switch">
                         <label class="switch">
-                            <input type="checkbox" ${device.attacking ? 'checked' : ''} onchange="handleToggle('${device.ip}', '${device.mac}', this.checked)">
+                            <input type="checkbox" ${dev.attacking ? 'checked' : ''} onchange="toggleDevice('${dev.ip}', '${dev.mac}', this.checked)">
                             <span class="slider"></span>
                         </label>
                     </div>
-                `;
-                list.appendChild(card);
+                    <div class="device-header">
+                        <div class="device-icon">
+                            <i class="fas fa-${dev.icon || 'laptop'}"></i>
+                        </div>
+                        <div class="device-title">
+                            <div class="device-name">
+                                ${dev.name} 
+                                <i class="fas fa-edit" onclick="editNickname('${dev.mac}', '${dev.name}', '${dev.icon}')" style="cursor:pointer; font-size:0.8rem; opacity:0.6;"></i>
+                            </div>
+                            <div class="device-vendor">${dev.vendor}</div>
+                            ${statusBadge}
+                        </div>
+                    </div>
+                    <div class="device-body">
+                        <div><span class="label">IP Address</span>${dev.ip}</div>
+                        <div><span class="label">MAC Address</span>${dev.mac}</div>
+                    </div>
+                    <div class="bandwidth-section">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span class="label">Real-time Traffic</span>
+                            <span class="bandwidth-val" id="bw-${dev.mac.replace(/:/g,'-')}">${dev.bandwidth || 0} KB/s</span>
+                        </div>
+                        <div class="sparkline-container">
+                            <canvas id="chart-${dev.mac.replace(/:/g,'-')}"></canvas>
+                        </div>
+                    </div>
+                </div>
+            `}).join('');
+            
+            filteredDevices.forEach(dev => initChart(dev.mac));
+        }
+
+        function initChart(mac) {
+            const id = 'chart-' + mac.replace(/:/g,'-');
+            const canvas = document.getElementById(id);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            if (charts[mac]) charts[mac].destroy();
+            
+            charts[mac] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array(20).fill(''),
+                    datasets: [{
+                        data: Array(20).fill(0),
+                        borderColor: '#00f2fe',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: true,
+                        backgroundColor: 'rgba(0, 242, 254, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { display: false }, y: { display: false, min: 0 } }
+                }
             });
         }
 
-        function handleToggle(ip, mac, checked) {
-            const card = document.getElementById(`card-${ip.replace(/\./g, '-')}`);
-            if (checked) {
-                card.classList.add('attacking');
-            } else {
-                card.classList.remove('attacking');
-            }
-            toggleAttack(ip, mac, checked);
+        async function toggleDevice(ip, mac, state) {
+            const card = document.getElementById('card-' + mac.replace(/:/g,'-'));
+            if (state) card.classList.add('attacking');
+            else card.classList.remove('attacking');
+            
+            await fetch('/api/toggle', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ ip, mac, state })
+            });
         }
 
-        // Initialize status polling (optional but good for real-time)
-        setInterval(async () => {
+        async function toggleAll() {
+            if (!globalState) {
+                if (!confirm("⚠️ This will DISCONNECT EVERYONE on the network. Are you sure?")) return;
+            }
+            globalState = !globalState;
+            const btn = document.getElementById('btn-all');
+            btn.classList.toggle('active', globalState);
+            btn.innerHTML = globalState ? '<i class="fas fa-shield-alt"></i> Restore All' : '<i class="fas fa-radiation"></i> Kill All';
+            
+            await fetch('/api/toggle_all', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ state: globalState, devices: devices })
+            });
+            scan();
+        }
+
+        function selectIcon(icon) {
+            selectedIcon = icon;
+            document.querySelectorAll('.icon-option').forEach(opt => {
+                opt.classList.toggle('selected', opt.dataset.icon === icon);
+            });
+        }
+
+        function editNickname(mac, name, icon) {
+            selectedMac = mac;
+            document.getElementById('nickname-input').value = name;
+            document.getElementById('modal').style.display = 'flex';
+            selectIcon(icon || 'laptop');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        async function saveNickname() {
+            const name = document.getElementById('nickname-input').value;
+            await fetch('/api/nickname', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ mac: selectedMac, name: name, icon: selectedIcon })
+            });
+            closeModal();
+            scan();
+        }
+
+        async function updateStatus() {
             try {
-                const response = await fetch('/api/status');
-                const data = await response.json();
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
                 if (data.status === 'success') {
-                    // Update UI if needed (already handled by local toggle for speed)
+                    for (const [ip, bw] of Object.entries(data.bandwidth)) {
+                        const dev = devices.find(d => d.ip === ip);
+                        if (dev && charts[dev.mac]) {
+                            const label = document.getElementById('bw-' + dev.mac.replace(/:/g,'-'));
+                            if (label) label.innerText = bw + " KB/s";
+                            
+                            const chart = charts[dev.mac];
+                            chart.data.datasets[0].data.push(bw);
+                            chart.data.datasets[0].data.shift();
+                            chart.update('none');
+                        }
+                    }
+                    
+                    if (data.global_state !== globalState) {
+                        globalState = data.global_state;
+                        const btn = document.getElementById('btn-all');
+                        btn.classList.toggle('active', globalState);
+                        btn.innerHTML = globalState ? '<i class="fas fa-shield-alt"></i> Restore All' : '<i class="fas fa-biohazard"></i> Cut All Devices';
+                    }
                 }
             } catch (e) {}
-        }, 5000);
+        }
+
+        setInterval(updateStatus, 1500);
+        window.onload = scan;
     </script>
 </body>
 </html>

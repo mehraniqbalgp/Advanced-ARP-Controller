@@ -1,0 +1,16 @@
+{
+    "devices": {
+        "b8:3b:cc:f3:78:c5": {
+            "name": "Unknown Device",
+            "icon": "laptop"
+        },
+        "6a:14:10:5d:37:c1": {
+            "name": "Zaid Phone",
+            "icon": "laptop"
+        },
+        "f6:0a:e4:0c:74:3f": {
+            "name": "Abdullah Phone",
+            "icon": "laptop"
+        }
+    }
+}
