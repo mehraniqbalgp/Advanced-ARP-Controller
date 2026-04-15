@@ -6,7 +6,7 @@ import threading
 import json
 import socket
 from flask import Flask, render_template, jsonify, request
-from scapy.all import ARP, Ether, srp, sendp, conf, IP, UDP, sr1, sniff
+from scapy.all import ARP, Ether, srp, sendp, conf, IP, UDP, sr1, sniff, IPv6, ICMPv6ND_NA, ICMPv6NDOptDstLLAddr
 from scapy.layers.netbios import NBNSQueryRequest, NBNSNodeStatusResponse
 from flask_cors import CORS
 
